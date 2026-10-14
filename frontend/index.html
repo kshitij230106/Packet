@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bandwidth Court — QoS &amp; Fair Bandwidth Simulator</title>
+  <meta name="description" content="Simple, interactive network simulator: watch FCFS, Strict Priority, and WFQ compete for bandwidth in real time.">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="simple-header">
+    <div class="header-inner">
+      <div class="logo-area">
+        <span class="logo-icon">⚖️</span>
+        <div>
+          <h1>Bandwidth Court</h1>
+          <p class="tagline">Who gets bandwidth when the network is congested?</p>
+        </div>
+      </div>
+
+      <!-- Quick Presets -->
+      <div class="quick-scenarios">
+        <span class="sc-label">Quick Tests:</span>
+        <button type="button" class="btn-scenario active" data-preset="normal">Balanced Load</button>
+        <button type="button" class="btn-scenario" data-preset="congestion">Congested Bottleneck</button>
+        <button type="button" class="btn-scenario" data-preset="starvation">Starve File Downloads</button>
+      </div>
+
+      <div class="header-status">
+        <span id="backend-status-dot" class="dot green"></span>
+        <span id="backend-status-text">Engine Online</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN PLAYGROUND -->
+  <main class="playground-container">
+    <!-- STEP 1: CHOOSE ALGORITHM & LINK SPEED -->
+    <section class="control-banner">
+      <div class="control-col">
+        <span class="step-num">1. Pick Algorithm</span>
+        <div class="algo-picker">
+          <button type="button" class="algo-btn" data-algo="fcfs" id="btn-fcfs">
+            <span class="algo-title">FCFS (FIFO)</span>
+            <span class="algo-desc">First-come, first-served</span>
+          </button>
+          <button type="button" class="algo-btn" data-algo="strict_priority" id="btn-sp">
+            <span class="algo-title">Strict Priority</span>
+            <span class="algo-desc">High priority first</span>
+          </button>
+          <button type="button" class="algo-btn" data-algo="wfq" id="btn-wfq">
+            <span class="algo-title">WFQ (Fair Share)</span>
+            <span class="algo-desc">Weighted fair queuing</span>
+          </button>
+          <button type="button" class="algo-btn active" data-algo="compare" id="btn-compare">
+            <span class="algo-title">Compare All 3</span>
+            <span class="algo-desc">Side-by-side replay</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="control-col slider-col">
+        <span class="step-num">2. Bottleneck Link Speed</span>
+        <div class="slider-box">
+          <div class="slider-val-row">
+            <span>Link Capacity:</span>
+            <strong id="lbl-link-speed">10 Mbps</strong>
+          </div>
+          <input type="range" id="input-link-capacity" min="2" max="25" step="1" value="10">
+          <div class="slider-ticks">
+            <span>2M (Choked)</span>
+            <span>10M (Standard)</span>
+            <span>25M (Fast)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="control-col btn-col">
+        <span class="step-num">3. Run Experiment</span>
+        <button type="button" id="btn-run-sim" class="btn-run-glow">
+          <span class="play-symbol">▶</span>
+          <span id="run-btn-label">Simulate Traffic</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- STEP 2: LIVE PACKET PIPELINE ANIMATOR -->
+    <section class="pipeline-section">
+      <div class="section-title-row">
+        <h2>Live Network Pipeline</h2>
+        <div class="anim-bar">
+          <span id="sim-clock" class="clock-chip">Time: 0.00 s</span>
+          <button type="button" id="btn-anim-play" class="btn-ctrl">⏸ Pause</button>
+          <button type="button" id="btn-anim-step" class="btn-ctrl">⏭ Step</button>
+          <button type="button" id="btn-anim-reset" class="btn-ctrl">↺ Rewind</button>
+          <select id="select-anim-speed" class="speed-dropdown">
+            <option value="1" selected>1x Speed</option>
+            <option value="2">2x Fast</option>
+            <option value="5">5x Turbo</option>
+            <option value="999">Instant Finish</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="pipeline-board">
+        <!-- 1. Send Senders -->
+        <div class="pipe-col senders-col">
+          <span class="col-lbl">4 Application Flows</span>
+          
+          <div class="sender-row em" id="snd-emergency">
+            <span class="flow-icon">🚨</span>
+            <div class="flow-txt">
+              <strong>Emergency</strong>
+              <small>Priority 1 • Small</small>
+            </div>
+          </div>
+
+          <div class="sender-row vid" id="snd-video">
+            <span class="flow-icon">📹</span>
+            <div class="flow-txt">
+              <strong>Video Call</strong>
+              <small>Priority 2 • 960B</small>
+            </div>
+          </div>
+
+          <div class="sender-row game" id="snd-gaming">
+            <span class="flow-icon">🎮</span>
+            <div class="flow-txt">
+              <strong>Gaming</strong>
+              <small>Priority 3 • 84B</small>
+            </div>
+          </div>
+
+          <div class="sender-row file" id="snd-file">
+            <span class="flow-icon">📁</span>
+            <div class="flow-txt">
+              <strong>File Download</strong>
+              <small>Priority 4 • 1440B</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Waiting Buffers -->
+        <div class="pipe-col buffers-col">
+          <div class="col-lbl-row">
+            <span class="col-lbl">Waiting Queues</span>
+            <span class="algo-badge" id="lbl-active-algo">WFQ Scheduler</span>
+          </div>
+
+          <div class="lane em" id="lane-emergency">
+            <span class="lane-tag">🚨 Emergency Queue (<span id="cnt-emergency">0</span>)</span>
+            <div class="lane-chips" id="buf-emergency"><span class="empty-txt">Empty</span></div>
+          </div>
+
+          <div class="lane vid" id="lane-video">
+            <span class="lane-tag">📹 Video Queue (<span id="cnt-video">0</span>)</span>
+            <div class="lane-chips" id="buf-video"><span class="empty-txt">Empty</span></div>
+          </div>
+
+          <div class="lane game" id="lane-gaming">
+            <span class="lane-tag">🎮 Gaming Queue (<span id="cnt-gaming">0</span>)</span>
+            <div class="lane-chips" id="buf-gaming"><span class="empty-txt">Empty</span></div>
+          </div>
+
+          <div class="lane file" id="lane-file">
+            <span class="lane-tag">📁 File Queue (<span id="cnt-file">0</span>)</span>
+            <div class="lane-chips" id="buf-file"><span class="empty-txt">Empty</span></div>
+          </div>
+        </div>
+
+        <!-- 3. Scheduler Arbiter & Bottleneck Link -->
+        <div class="pipe-col link-col">
+          <span class="col-lbl">Bottleneck Link</span>
+          
+          <div class="link-pipe-box">
+            <div class="link-status-badge" id="pipe-status">LINK IDLE</div>
+            <div class="pipe-tube" id="pipe-tube">
+              <div class="packet-in-transit" id="tx-carrier">
+                <span class="idle-txt">No Packet</span>
+              </div>
+              <div class="pipe-meter" id="pipe-meter"></div>
+            </div>
+            <div class="link-meta">
+              <span id="lbl-pipe-cap">Capacity: 10 Mbps</span>
+              <span id="lbl-pipe-detail">Serialization delay = L / C</span>
+            </div>
+          </div>
+
+          <!-- Sinks: Delivered vs Dropped -->
+          <div class="sinks-row">
+            <div class="sink-badge ok">
+              <span class="sink-icon">✅</span>
+              <div>
+                <strong id="val-delivered-count">0</strong>
+                <small>Delivered</small>
+              </div>
+            </div>
+            <div class="sink-badge drop">
+              <span class="sink-icon">🗑️</span>
+              <div>
+                <strong id="val-dropped-count">0</strong>
+                <small>Dropped</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: "WHAT JUST HAPPENED?" PLAIN-ENGLISH TAKEAWAYS -->
+    <section class="takeaway-section">
+      <div class="takeaway-card" id="takeaway-card">
+        <span class="takeaway-badge">💡 What Just Happened?</span>
+        <div id="takeaway-text" class="takeaway-text">
+          <p>Running the experiment to evaluate packet scheduling...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 4: RESULTS CARDS & COMPARISON -->
+    <section class="results-grid">
+      <!-- 4 Simple KPI Cards -->
+      <div class="kpi-box">
+        <span class="kpi-title">Delivered Throughput</span>
+        <div class="kpi-num" id="kpi-tp">0.0 <small>Mbps</small></div>
+        <span class="kpi-hint" id="kpi-tp-sub">out of 10 Mbps</span>
+      </div>
+
+      <div class="kpi-box">
+        <span class="kpi-title">Average Delay (Latency)</span>
+        <div class="kpi-num" id="kpi-delay">0.0 <small>ms</small></div>
+        <span class="kpi-hint">Waiting + Transmission time</span>
+      </div>
+
+      <div class="kpi-box">
+        <span class="kpi-title">Packet Loss Rate</span>
+        <div class="kpi-num" id="kpi-loss">0.0%</div>
+        <span class="kpi-hint" id="kpi-loss-sub">0 packets dropped</span>
+      </div>
+
+      <div class="kpi-box">
+        <span class="kpi-title">Fairness Index</span>
+        <div class="kpi-num" id="kpi-fair">1.00 <small>/ 1.0</small></div>
+        <span class="kpi-hint">Jain's Weighted Fairness</span>
+      </div>
+    </section>
+
+    <!-- SIDE-BY-SIDE SUMMARY (Active in Compare Mode) -->
+    <section class="compare-section" id="compare-section">
+      <div class="compare-header">
+        <h3>Side-by-Side Algorithm Comparison (Same Workload)</h3>
+      </div>
+      <div class="compare-cards-grid">
+        <!-- FCFS Card -->
+        <div class="alg-summary-card fcfs">
+          <div class="alg-head">
+            <span class="alg-name">1. FCFS (FIFO)</span>
+            <span class="alg-verdict" id="v-fcfs">Bufferbloat</span>
+          </div>
+          <ul class="alg-stats">
+            <li><span>Throughput:</span> <strong id="tp-fcfs">-</strong></li>
+            <li><span>Avg Delay:</span> <strong id="del-fcfs">-</strong></li>
+            <li><span>File Drops:</span> <strong id="loss-fcfs">-</strong></li>
+            <li><span>Fairness:</span> <strong id="fair-fcfs">-</strong></li>
+          </ul>
+          <p class="alg-note">Bulk File Downloads clog the shared queue, delaying real-time Gaming packets.</p>
+        </div>
+
+        <!-- Strict Priority Card -->
+        <div class="alg-summary-card sp">
+          <div class="alg-head">
+            <span class="alg-name">2. Strict Priority</span>
+            <span class="alg-verdict warning" id="v-sp">Starvation Risk</span>
+          </div>
+          <ul class="alg-stats">
+            <li><span>Throughput:</span> <strong id="tp-sp">-</strong></li>
+            <li><span>Emergency Delay:</span> <strong id="del-sp-em">-</strong></li>
+            <li><span>File Drops:</span> <strong id="loss-sp">-</strong></li>
+            <li><span>Fairness:</span> <strong id="fair-sp">-</strong></li>
+          </ul>
+          <p class="alg-note">Emergency messages pass instantly, but low-priority File Downloads suffer starvation.</p>
+        </div>
+
+        <!-- WFQ Card -->
+        <div class="alg-summary-card wfq">
+          <div class="alg-head">
+            <span class="alg-name">3. Weighted Fair Queuing</span>
+            <span class="alg-verdict good" id="v-wfq">Balanced QoS</span>
+          </div>
+          <ul class="alg-stats">
+            <li><span>Throughput:</span> <strong id="tp-wfq">-</strong></li>
+            <li><span>Avg Delay:</span> <strong id="del-wfq">-</strong></li>
+            <li><span>File Drops:</span> <strong id="loss-wfq">-</strong></li>
+            <li><span>Fairness:</span> <strong id="fair-wfq">-</strong></li>
+          </ul>
+          <p class="alg-note">Each flow gets its guaranteed share according to weight ($w_i$). Zero starvation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLEAN CHART: BANDWIDTH SHARE -->
+    <section class="chart-section">
+      <div class="chart-card-simple">
+        <div class="chart-header-row">
+          <h3>Bandwidth Delivered by Application (Mbps)</h3>
+          <span class="chart-sub">Compares service received by each traffic class</span>
+        </div>
+        <div class="chart-box">
+          <canvas id="simple-chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- OPTIONAL ADVANCED DRAWER -->
+    <details class="advanced-drawer">
+      <summary class="adv-summary">⚙️ Advanced Parameters (Optional)</summary>
+      <div class="adv-content">
+        <div class="adv-grid">
+          <div class="adv-item">
+            <label>Simulation Duration (seconds):</label>
+            <input type="number" id="input-duration" value="5.0" min="1" max="15" step="0.5">
+          </div>
+          <div class="adv-item">
+            <label>Random Seed:</label>
+            <input type="number" id="input-seed" value="42" min="1" max="999999">
+          </div>
+          <div class="adv-item">
+            <label>Emergency Rate (pps):</label>
+            <input type="number" id="rate-emergency" value="8" min="1" max="100">
+          </div>
+          <div class="adv-item">
+            <label>Video Rate (pps):</label>
+            <input type="number" id="rate-video" value="100" min="10" max="300">
+          </div>
+          <div class="adv-item">
+            <label>Gaming Rate (pps):</label>
+            <input type="number" id="rate-gaming" value="140" min="10" max="300">
+          </div>
+          <div class="adv-item">
+            <label>File Rate (pps):</label>
+            <input type="number" id="rate-file" value="220" min="20" max="500">
+          </div>
+        </div>
+      </div>
+    </details>
+  </main>
+
+  <footer class="simple-footer">
+    <p>Bandwidth Court Playground — Discrete-Event Network QoS Simulator</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
